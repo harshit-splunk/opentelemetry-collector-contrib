@@ -31,54 +31,65 @@ var (
 
 // splunkHecToLogData transforms splunk events into logs
 func splunkHecToLogData(logger *zap.Logger, events []*splunk.Event, resourceCustomizer func(pcommon.Resource), config *Config) (plog.Logs, error) {
-	ld := plog.NewLogs()
-	rl := ld.ResourceLogs().AppendEmpty()
-	sl := rl.ScopeLogs().AppendEmpty()
-	for _, event := range events {
-		// The SourceType field is the most logical "name" of the event.
-		logRecord := sl.LogRecords().AppendEmpty()
-		if err := convertToValue(logger, event.Event, logRecord.Body()); err != nil {
-			return ld, err
-		}
-
-		// Splunk timestamps are in seconds so convert to nanos by multiplying
-		// by 1 billion.
-		if event.Time != nil {
-			logRecord.SetTimestamp(pcommon.Timestamp(*event.Time * 1e9))
-		}
-
-		// Set event fields first, so the specialized attributes overwrite them if needed.
-		keys := make([]string, 0, len(event.Fields))
-		for k := range event.Fields {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, key := range keys {
-			val := event.Fields[key]
-			err := convertToValue(logger, val, logRecord.Attributes().PutEmpty(key))
-			if err != nil {
-				return ld, err
-			}
-		}
-
-		if event.Host != "" {
-			logRecord.Attributes().PutStr(config.HecToOtelAttrs.Host, event.Host)
-		}
-		if event.Source != "" {
-			logRecord.Attributes().PutStr(config.HecToOtelAttrs.Source, event.Source)
-		}
-		if event.SourceType != "" {
-			logRecord.Attributes().PutStr(config.HecToOtelAttrs.SourceType, event.SourceType)
-		}
-		if event.Index != "" {
-			logRecord.Attributes().PutStr(config.HecToOtelAttrs.Index, event.Index)
-		}
-		if resourceCustomizer != nil {
-			resourceCustomizer(rl.Resource())
+	logs, err := splunkHecToLogData1(events, config)
+	if err != nil {
+		return logs, err
+	}
+	if resourceCustomizer != nil {
+		for i := 0; i < logs.ResourceLogs().Len(); i++ {
+			resourceCustomizer(logs.ResourceLogs().At(i).Resource())
 		}
 	}
+	return logs, nil
 
-	return ld, nil
+	// ld := plog.NewLogs()
+	// rl := ld.ResourceLogs().AppendEmpty()
+	// sl := rl.ScopeLogs().AppendEmpty()
+	// for _, event := range events {
+	// 	// The SourceType field is the most logical "name" of the event.
+	// 	logRecord := sl.LogRecords().AppendEmpty()
+	// 	if err := convertToValue(logger, event.Event, logRecord.Body()); err != nil {
+	// 		return ld, err
+	// 	}
+
+	// 	// Splunk timestamps are in seconds so convert to nanos by multiplying
+	// 	// by 1 billion.
+	// 	if event.Time != nil {
+	// 		logRecord.SetTimestamp(pcommon.Timestamp(*event.Time * 1e9))
+	// 	}
+
+	// 	// Set event fields first, so the specialized attributes overwrite them if needed.
+	// 	keys := make([]string, 0, len(event.Fields))
+	// 	for k := range event.Fields {
+	// 		keys = append(keys, k)
+	// 	}
+	// 	sort.Strings(keys)
+	// 	for _, key := range keys {
+	// 		val := event.Fields[key]
+	// 		err := convertToValue(logger, val, logRecord.Attributes().PutEmpty(key))
+	// 		if err != nil {
+	// 			return ld, err
+	// 		}
+	// 	}
+
+	// 	if event.Host != "" {
+	// 		logRecord.Attributes().PutStr(config.HecToOtelAttrs.Host, event.Host)
+	// 	}
+	// 	if event.Source != "" {
+	// 		logRecord.Attributes().PutStr(config.HecToOtelAttrs.Source, event.Source)
+	// 	}
+	// 	if event.SourceType != "" {
+	// 		logRecord.Attributes().PutStr(config.HecToOtelAttrs.SourceType, event.SourceType)
+	// 	}
+	// 	if event.Index != "" {
+	// 		logRecord.Attributes().PutStr(config.HecToOtelAttrs.Index, event.Index)
+	// 	}
+	// 	if resourceCustomizer != nil {
+	// 		resourceCustomizer(rl.Resource())
+	// 	}
+	// }
+
+	// return ld, nil
 }
 
 func convertToValue(logger *zap.Logger, src interface{}, dest pcommon.Value) error {
