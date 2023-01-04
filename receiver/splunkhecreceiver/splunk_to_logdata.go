@@ -31,7 +31,7 @@ var (
 
 // splunkHecToLogData transforms splunk events into logs
 func splunkHecToLogData(logger *zap.Logger, events []*splunk.Event, resourceCustomizer func(pcommon.Resource), config *Config) (plog.Logs, error) {
-	logs, err := splunkHecToLogData1(events, config)
+	logs, err := newResourceAttributeMapper(config, events).splunkHecToLogData()
 	if err != nil {
 		return logs, err
 	}

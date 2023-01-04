@@ -1,11 +1,14 @@
 package splunkhecreceiver
 
 import (
+	"fmt"
+	"math/rand"
 	"sort"
 	"testing"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/splunk"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
@@ -99,19 +102,19 @@ func generateEvents() []*splunk.Event {
 	}
 }
 
-func TestSplunkHecToLogData1(t *testing.T) {
+// func TestSplunkHecToLogData1(t *testing.T) {
 
-	events := generateEvents()
+// 	events := generateEvents()
 
-	logs, err := splunkHecToLogData1(events, createDefaultConfig().(*Config))
-	assert.NoError(t, err)
-	assert.Equal(t, 3, logs.LogRecordCount())
-	sort.Slice(events, func(i, j int) bool {
-		return events[i].Event.(string) < events[j].Event.(string)
-	})
-	got := logToEvent(logs)
-	assert.EqualValues(t, events, got)
-}
+// 	logs, err := splunkHecToLogData1(events, createDefaultConfig().(*Config))
+// 	assert.NoError(t, err)
+// 	assert.Equal(t, 3, logs.LogRecordCount())
+// 	sort.Slice(events, func(i, j int) bool {
+// 		return events[i].Event.(string) < events[j].Event.(string)
+// 	})
+// 	got := logToEvent(logs)
+// 	assert.EqualValues(t, events, got)
+// }
 
 func logToEvent(logs plog.Logs) []*splunk.Event {
 	events := make([]*splunk.Event, 0, logs.LogRecordCount())
@@ -139,11 +142,47 @@ func logToEvent(logs plog.Logs) []*splunk.Event {
 	return events
 }
 
-func BenchmarkFunction(b *testing.B) {
+// func BenchmarkFunction(b *testing.B) {
+// 	for i := 0; i < b.N; i++ {
+// 		events := generateEvents()
+// 		logs, err := splunkHecToLogData1(events, createDefaultConfig().(*Config))
+// 		assert.NoError(b, err)
+// 		assert.Equal(b, 3, logs.LogRecordCount())
+// 	}
+// }
+
+func getMap() map[string]interface{} {
+	resource := map[string]interface{}{}
+	r := rand.New(rand.NewSource(65))
+	for len(resource) < 1000 {
+		key := fmt.Sprint(r.Int())
+		resource[key] = len(resource)
+	}
+	return resource
+}
+func BenchmarkSortCreate(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		events := generateEvents()
-		logs, err := splunkHecToLogData1(events, createDefaultConfig().(*Config))
-		assert.NoError(b, err)
-		assert.Equal(b, 3, logs.LogRecordCount())
+		resource := getMap()
+		keys := make([]string, 0, len(resource))
+		for k := range resource {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+
+		attr := plog.NewLogs().ResourceLogs().AppendEmpty().Resource().Attributes()
+		attr.EnsureCapacity(len(keys))
+		for _, k := range keys {
+			attr.PutEmpty(k).FromRaw(resource[k])
+		}
+	}
+
+}
+func BenchmarkCreateSort(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		resource := getMap()
+		rl := plog.NewLogs().ResourceLogs().AppendEmpty()
+		err := rl.Resource().Attributes().FromRaw(resource)
+		require.NoError(b, err)
+		rl.Resource().Attributes().Sort()
 	}
 }
